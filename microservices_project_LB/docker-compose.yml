@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  backend-1:
+    build: ./backend
+    container_name: backend-1
+    environment:
+      - INSTANCE_ID=backend-1
+    networks:
+      - microservices-net
+
+  backend-2:
+    build: ./backend
+    container_name: backend-2
+    environment:
+      - INSTANCE_ID=backend-2
+    networks:
+      - microservices-net
+
+  backend-3:
+    build: ./backend
+    container_name: backend-3
+    environment:
+      - INSTANCE_ID=backend-3
+    networks:
+      - microservices-net
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge
