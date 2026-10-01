@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  backend-1:
+    build: ./backend
+    container_name: backend-1
+    environment:
+      - INSTANCE_ID=backend-1
+    networks:
+      - microservices-net
+
+  backend-2:
+    build: ./backend
+    container_name: backend-2
+    environment:
+      - INSTANCE_ID=backend-2
+    networks:
+      - microservices-net
+
+  backend-3:
+    build: ./backend
+    container_name: backend-3
+    environment:
+      - INSTANCE_ID=backend-3
+    networks:
+      - microservices-net
+
+  # Hand-rolled Go gateway: static routes.json, atomic round-robin,
+  # active heartbeat polling. Kept running on :8001 so you can compare
+  # it directly against the nginx gateway below.
+  go-gateway:
+    build: ./gateway
+    container_name: go-gateway
+    ports:
+      - "8001:8000"
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  # nginx gateway: same job (route + load-balance to the backend pool),
+  # done via static config instead of hand-written Go. Runs on :8000.
+  nginx-gateway:
+    build: ./nginx-gateway
+    container_name: nginx-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge

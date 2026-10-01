@@ -1,0 +1,39 @@
+events {}
+
+http {
+    upstream backend_pool {
+        least_conn;
+
+        {{/* consul-template's `service` function queries Consul and, by
+             default, returns only instances currently passing their health
+             check — the exact list this upstream block should contain.
+             Every time that list changes (a backend registers,
+             deregisters, or fails its check), this whole file is
+             re-rendered and nginx is told to reload. */}}
+        {{ range service "backend" }}
+        server {{ .Address }}:{{ .Port }} max_fails=3 fail_timeout=30s;
+        {{ else }}
+        # No healthy "backend" instances registered in Consul right now.
+        # This placeholder keeps the upstream block syntactically valid
+        # (nginx requires at least one server) instead of crashing nginx.
+        server 127.0.0.1:65535 down;
+        {{ end }}
+    }
+
+    server {
+        listen 8000;
+
+        location /items {
+            proxy_pass http://backend_pool;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        location /heartbeat {
+            add_header Content-Type text/plain;
+            return 200 "nginx gateway alive";
+        }
+    }
+}

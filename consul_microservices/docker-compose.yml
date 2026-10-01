@@ -1,0 +1,118 @@
+version: "3.9"
+
+services:
+  # Single-node Consul in "dev mode" — in-memory, no persistence, no ACLs.
+  # Perfect for learning the API and watching discovery happen; not how
+  # you'd run Consul for anything real (that needs a multi-node cluster
+  # with persistent storage).
+  consul:
+    image: hashicorp/consul:latest
+    container_name: consul
+    command: "agent -dev -client=0.0.0.0 -ui"
+    ports:
+      - "8500:8500"   # HTTP API + web UI: http://localhost:8500/ui
+    networks:
+      - microservices-net
+
+  backend-1:
+    build: ./backend
+    container_name: backend-1
+    environment:
+      - INSTANCE_ID=backend-1
+      - CONSUL_HTTP_ADDR=http://consul:8500
+    depends_on:
+      - consul
+    networks:
+      - microservices-net
+
+  backend-2:
+    build: ./backend
+    container_name: backend-2
+    environment:
+      - INSTANCE_ID=backend-2
+      - CONSUL_HTTP_ADDR=http://consul:8500
+    depends_on:
+      - consul
+    networks:
+      - microservices-net
+
+  backend-3:
+    build: ./backend
+    container_name: backend-3
+    environment:
+      - INSTANCE_ID=backend-3
+      - CONSUL_HTTP_ADDR=http://consul:8500
+    depends_on:
+      - consul
+    networks:
+      - microservices-net
+
+  # Hand-rolled Go gateway: routes.json now only maps a prefix to a Consul
+  # SERVICE NAME, not to IPs. It discovers healthy instances by querying
+  # Consul directly, on a 5s loop. Still a single instance — kept on :8001
+  # for comparison.
+  go-gateway:
+    build: ./gateway
+    container_name: go-gateway
+    environment:
+      - CONSUL_HTTP_ADDR=http://consul:8500
+    ports:
+      - "8001:8000"
+    depends_on:
+      - consul
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  # Two nginx gateway replicas. Each bundles consul-template, which
+  # re-renders nginx.conf's upstream block from Consul's live "backend"
+  # service list and reloads nginx whenever it changes — no more
+  # hardcoded backend-1/2/3 in nginx.conf at all.
+  nginx-gateway-1:
+    build: ./nginx-gateway
+    container_name: nginx-gateway-1
+    environment:
+      - CONSUL_HTTP_ADDR=consul:8500
+    depends_on:
+      - consul
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  nginx-gateway-2:
+    build: ./nginx-gateway
+    container_name: nginx-gateway-2
+    environment:
+      - CONSUL_HTTP_ADDR=consul:8500
+    depends_on:
+      - consul
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  # HAProxy still fronts the two nginx-gateway replicas by their static
+  # Docker service names — that list is small and changes rarely (it's a
+  # deployment decision, "how many gateway replicas do I want"), unlike the
+  # backend pool, which is exactly the kind of thing that benefits from
+  # dynamic discovery. So this tier intentionally stays as-is.
+  haproxy:
+    build: ./haproxy
+    container_name: haproxy
+    ports:
+      - "8000:8000"   # client traffic
+      - "8404:8404"   # stats dashboard
+    depends_on:
+      - nginx-gateway-1
+      - nginx-gateway-2
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge

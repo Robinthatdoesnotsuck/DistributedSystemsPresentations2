@@ -1,0 +1,84 @@
+version: "3.9"
+
+services:
+  backend-1:
+    build: ./backend
+    container_name: backend-1
+    environment:
+      - INSTANCE_ID=backend-1
+    networks:
+      - microservices-net
+
+  backend-2:
+    build: ./backend
+    container_name: backend-2
+    environment:
+      - INSTANCE_ID=backend-2
+    networks:
+      - microservices-net
+
+  backend-3:
+    build: ./backend
+    container_name: backend-3
+    environment:
+      - INSTANCE_ID=backend-3
+    networks:
+      - microservices-net
+
+  # Hand-rolled Go gateway: static routes.json, atomic round-robin,
+  # active heartbeat polling. Still a single instance (no HA lesson
+  # applied here) — kept running on :8001 for comparison.
+  go-gateway:
+    build: ./gateway
+    container_name: go-gateway
+    ports:
+      - "8001:8000"
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  # Two identical nginx gateway replicas. Neither is reachable directly
+  # from the host anymore — only HAProxy talks to them — because the
+  # whole point is that clients should never depend on any ONE of these
+  # being up.
+  nginx-gateway-1:
+    build: ./nginx-gateway
+    container_name: nginx-gateway-1
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  nginx-gateway-2:
+    build: ./nginx-gateway
+    container_name: nginx-gateway-2
+    depends_on:
+      - backend-1
+      - backend-2
+      - backend-3
+    networks:
+      - microservices-net
+
+  # HAProxy is now the actual front door on :8000. It load-balances across
+  # the two nginx-gateway replicas above and actively health-checks them,
+  # so either one can go down without taking the system with it.
+  haproxy:
+    build: ./haproxy
+    container_name: haproxy
+    ports:
+      - "8000:8000"   # client traffic
+      - "8404:8404"   # stats dashboard
+    depends_on:
+      - nginx-gateway-1
+      - nginx-gateway-2
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge
