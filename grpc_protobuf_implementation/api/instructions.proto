@@ -1,0 +1,53 @@
+syntax = "proto3";
+option go_package = "/proto_gen";
+import "google/protobuf/timestamp.proto";
+
+service OvermindService {
+  rpc GetOverMind(GetOvermindRequest) returns (GetOvermindResponse);
+  rpc
+}
+service HatcheryService {
+}
+
+service LarvaService {
+}
+message GetOvermindRequest {
+  string overmind_id = 1;
+}
+message GetOvermindResponse {
+  Overmind overmind = 1;
+}
+message Overmind {
+  int32 id = 1;
+  string user_name = 2;
+  repeated Hatchery hatcheries = 3;
+}
+
+message Hatchery { 
+  string id = 1;
+  string state = 2;
+  repeated Larva larvae = 3;
+  repeated HatcheryInstruction instructions = 4;
+}
+message Larva {
+  string id = 1;
+  LarvaType type = 2;
+  repeated LarvaInstruction instructions = 3;
+  google.protobuf.Timestamp last_instruction_update = 4;
+} 
+
+enum LarvaType {
+  LURKER_TYPE = 0;
+  CONTROLLER_TYPE = 1;
+  CHANGELING_TYPE = 2;
+  CORRUPTOR_TYPE = 3;
+}
+message HatcheryInstruction {
+  string task = 1;
+  string state = 2;
+}
+message LarvaInstruction {
+  string task = 1;
+  double sleep_time = 2;
+  string state = 3;
+}

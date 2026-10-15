@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package order.v1;
+
+// Generated into gen/orderpb/order/v1 (see Makefile)
+option go_package = "github.com/example/kafka-grpc-demo/gen/orderpb/order/v1;orderv1";
+
+// Synchronous API: the caller waits only for "order accepted".
+// Everything else (stock, emails, ...) happens asynchronously via Kafka.
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+}
+
+message Item {
+  string sku = 1;
+  int32 quantity = 2;
+}
+
+message CreateOrderRequest {
+  string customer_id = 1;
+  string customer_email = 2;
+  repeated Item items = 3;
+}
+
+message CreateOrderResponse {
+  string order_id = 1;
+  string status = 2; // PENDING: accepted, being processed asynchronously
+}

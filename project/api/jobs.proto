@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package jobs;
+option go_package = "orchestrator/proto_gen";
+
+import "google/protobuf/timestamp.proto";
+
+// Account is a user who owns one or more Clusters.
+message Account {
+  int32 id = 1;
+  string user_name = 2;
+  repeated Cluster clusters = 3;
+}
+
+// Cluster is a logical grouping of Workers that jobs get dispatched to.
+message Cluster {
+  string id = 1;
+  string status = 2;
+  repeated Worker workers = 3;
+  repeated ClusterJob jobs = 4;
+}
+
+// Worker is a single node that executes WorkerJobs and reports status back.
+message Worker {
+  string id = 1;
+  WorkerType type = 2;
+  repeated WorkerJob jobs = 3;
+  google.protobuf.Timestamp last_job_update = 4;
+}
+
+enum WorkerType {
+  BATCH_WORKER = 0;
+  STREAM_WORKER = 1;
+  TRANSFORM_WORKER = 2;
+  VALIDATION_WORKER = 3;
+}
+
+// ClusterJob is work assigned at the cluster level (e.g. "scale up", "drain").
+message ClusterJob {
+  string task = 1;
+  string status = 2;
+}
+
+// WorkerJob is a unit of work assigned to a single worker.
+message WorkerJob {
+  string task = 1;
+  double poll_interval_seconds = 2; // how often the worker checks in on this job
+  string status = 3;
+}
+
+// --- RPC services ---
+
+service HatcheryService {
+  // Called by user_service to read a cluster's current state.
+  rpc GetCluster(GetClusterRequest) returns (Cluster);
+  // Called by user_service to register a new cluster under an account.
+  rpc CreateCluster(CreateClusterRequest) returns (Cluster);
+  // Called by larva_service workers to register themselves with a cluster.
+  rpc RegisterWorker(RegisterWorkerRequest) returns (Worker);
+  // Called by larva_service workers to report a job status update.
+  rpc ReportJobStatus(ReportJobStatusRequest) returns (ReportJobStatusResponse);
+}
+
+service LarvaService {
+  // Called by hatchery_service to push a new job onto a worker's queue.
+  rpc AssignJob(AssignJobRequest) returns (AssignJobResponse);
+  // Called by hatchery_service (or user_service) to inspect a worker's state.
+  rpc GetWorker(GetWorkerRequest) returns (Worker);
+}
+
+service UserService {
+  rpc CreateAccount(CreateAccountRequest) returns (Account);
+  rpc GetAccount(GetAccountRequest) returns (Account);
+}
+
+message GetClusterRequest { string cluster_id = 1; }
+message CreateClusterRequest { int32 account_id = 1; }
+
+message RegisterWorkerRequest {
+  string cluster_id = 1;
+  WorkerType type = 2;
+}
+
+message ReportJobStatusRequest {
+  string cluster_id = 1;
+  string worker_id = 2;
+  string task = 3;
+  string status = 4;
+}
+message ReportJobStatusResponse { bool acknowledged = 1; }
+
+message AssignJobRequest {
+  string worker_id = 1;
+  WorkerJob job = 2;
+}
+message AssignJobResponse { bool accepted = 1; }
+
+message GetWorkerRequest { string worker_id = 1; }
+
+message CreateAccountRequest { string user_name = 1; }
+message GetAccountRequest { int32 account_id = 1; }
