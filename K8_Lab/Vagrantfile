@@ -1,0 +1,86 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+
+  # Base image (Debian 12 Bookworm, compatible with KVM/QEMU)
+  config.vm.box = "debian/bookworm64"
+
+  # Common Provisioning Script for Docker & Kubernetes
+  $bootstrap_script = <<-SCRIPT
+    set -e
+    echo "==> Updating System Packages..."
+    apt-get update -y && apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+
+    echo "==> Installing Docker..."
+    mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt-get update -y
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    systemctl enable --now docker
+
+    echo "==> Configuring Containerd for Kubernetes..."
+    containerd config default | tee /etc/containerd/config.toml >/dev/null
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+    systemctl restart containerd
+
+    echo "==> Disabling Swap (Required for Kubernetes)..."
+    swapoff -a
+    sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+    echo "==> Setting up Kernel Parameters for Kubernetes..."
+    cat <<EOF | tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+    modprobe overlay
+    modprobe br_netfilter
+
+    cat <<EOF | tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+    sysctl --system
+
+    echo "==> Installing Kubernetes Components (kubelet, kubeadm, kubectl)..."
+    K8S_VERSION="v1.30"
+    curl -fsSL "https://pkgs.k8s.io/core:/stable:/${K8S_VERSION}/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${K8S_VERSION}/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+    apt-get update -y
+    apt-get install -y kubelet kubeadm kubectl
+    apt-mark hold kubelet kubeadm kubectl
+  SCRIPT
+
+  # Define Node 1 (Master / Control Plane)
+  config.vm.define "node1" do |node1|
+    node1.vm.hostname = "k8s-node1"
+    node1.vm.network "private_network", ip: "192.168.56.11"
+    
+    node1.vm.provider :libvirt do |v|
+      v.memory = 4096
+      v.cpus = 2
+      v.driver = "kvm"
+      v.video_type = "virtio"
+    end
+
+    node1.vm.provision "shell", inline: $bootstrap_script
+  end
+
+  # Define Node 2 (Worker Node)
+  config.vm.define "node2" do |node2|
+    node2.vm.hostname = "k8s-node2"
+    node2.vm.network "private_network", ip: "192.168.56.12"
+
+    node2.vm.provider :libvirt do |v|
+      v.memory = 2048
+      v.cpus = 2
+      v.driver = "kvm"
+      v.video_type = "virtio"
+    end
+
+    node2.vm.provision "shell", inline: $bootstrap_script
+  end
+
+end

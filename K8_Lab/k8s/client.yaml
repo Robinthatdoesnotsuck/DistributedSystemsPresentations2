@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-client
+  labels:
+    app: grpc-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grpc-client
+  template:
+    metadata:
+      labels:
+        app: grpc-client
+    spec:
+      containers:
+      - name: grpc-client
+        image: grpc-client:latest
+        imagePullPolicy: Never
+        volumeMounts:
+        - name: tls-certs
+          mountPath: "/etc/ssl/certs/grpc"
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: grpc-client-secret

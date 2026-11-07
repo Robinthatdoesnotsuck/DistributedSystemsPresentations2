@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-server
+  labels:
+    app: grpc-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grpc-server
+  template:
+    metadata:
+      labels:
+        app: grpc-server
+    spec:
+      containers:
+      - name: grpc-server
+        image: grpc-server:latest
+        imagePullPolicy: Never # Uses local Minikube/Docker image
+        ports:
+        - containerPort: 50051
+        volumeMounts:
+        - name: tls-certs
+          mountPath: "/etc/ssl/certs/grpc"
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: grpc-server-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpc-server-service
+spec:
+  type: ClusterIP
+  selector:
+    app: grpc-server
+  ports:
+    - port: 50051
+      targetPort: 50051
+      protocol: TCP
