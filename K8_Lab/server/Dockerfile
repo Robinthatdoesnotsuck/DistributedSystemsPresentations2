@@ -7,21 +7,22 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy application source code
+# Copy source directory
 COPY server/ ./server/
 
-# Compile static binary (CGO disabled for scratch/alpine compatibility)
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o server ./server
+# Build static binary into a distinct filename (/app/grpc-server)
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/grpc-server ./server
 
 # Step 2: Create minimal final image
 FROM alpine:3.19
 
 WORKDIR /app
 
-# Copy compiled binary from builder stage
-COPY --from=builder /app/server /app/server
+# Copy the compiled executable file specifically
+COPY --from=builder /app/grpc-server /app/grpc-server
 
 # Expose gRPC port
 EXPOSE 50051
 
-ENTRYPOINT ["/app/server"]
+# Run the binary file
+ENTRYPOINT ["/app/grpc-server"]
